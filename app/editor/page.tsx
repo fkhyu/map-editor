@@ -4,7 +4,7 @@ import React, { Component, useState, useEffect, useRef, useCallback, ReactNode, 
 import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import * as turf from '@turf/turf';
-import { Feature, FeatureCollection, Polygon, LineString } from 'geojson';
+import type { Feature, FeatureCollection, Polygon, LineString } from 'geojson';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 // import { createClient } from '@supabase/supabase-js';
