@@ -1,5 +1,5 @@
 import * as turf from "@turf/turf";
-import type { Feature, Polygon } from "@turf/helpers";
+import type { Feature, Polygon } from "geojson";
 
 
 export function createWallPolygon(
