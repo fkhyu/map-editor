@@ -226,7 +226,7 @@ const Editor: React.FC = () => {
         return;
     }
 
-    const uniqueId = generateUniqueId('feature');
+    const uniqueId = generateUniqueId();
     newFeature.id = uniqueId;
 
     processedFeatureIds.current.add(uniqueId);
