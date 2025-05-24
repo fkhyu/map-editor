@@ -918,7 +918,7 @@ const Editor: React.FC = () => {
                   {wallFeatures.features.map((feature) => (
                     <div
                       key={feature.id}
-                      className={`p-2 text-sm cursor-pointer hover:bg-gray-200 rounded ${
+                      className={`p-2 text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 rounded ${
                         selectedFeature?.id === feature.id ? 'bg-blue-100' : ''
                       }`}
                       onClick={() => handleLayerSelect(feature)}
@@ -945,7 +945,7 @@ const Editor: React.FC = () => {
                     roomFeatures.features.map((feature) => (
                       <div
                         key={feature.id}
-                        className={`p-2 text-sm cursor-pointer hover:bg-gray-200 rounded ${
+                        className={`p-2 text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 rounded ${
                           selectedFeature?.id === feature.id ? 'bg-blue-100' : ''
                         }`}
                         onClick={() => handleLayerSelect(feature)}
@@ -970,7 +970,7 @@ const Editor: React.FC = () => {
                   {furnitureFeatures.features.map((feature) => (
                     <div
                       key={feature.id}
-                      className={`p-2 text-sm cursor-pointer hover:bg-gray-200 rounded ${
+                      className={`p-2 text-sm cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 rounded ${
                         selectedFurniture?.id === feature.id ? 'bg-blue-100' : ''
                       }`}
                       onClick={() => handleLayerSelect(feature)}
