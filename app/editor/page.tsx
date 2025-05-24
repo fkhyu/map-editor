@@ -982,6 +982,7 @@ const Editor: React.FC = () => {
                 </div>
               )}
             </div>
+            <a href="/" className='absolute bottom-4 px-8 py-4 hover:bg-gray-50 rounded-lg dark:hover:bg-gray-800'>← Back to dashboard</a>
           </div>
 
           <div className="flex-1">
