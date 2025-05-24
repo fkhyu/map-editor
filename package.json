@@ -30,6 +30,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/geojson": "^7946.0.16",
     "@types/mapbox-gl": "^3.4.1",
+    "@types/mapbox__mapbox-gl-draw": "^1.4.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
