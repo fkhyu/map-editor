@@ -237,7 +237,7 @@ const Editor: React.FC = () => {
         const cleaned = turf.truncate(line, { precision: 10 });
         const buffered = turf.buffer(cleaned, Math.max(0.1, wallWidth / 2), { units: 'meters' });
 
-        if (!buffered.geometry || buffered.geometry.type !== 'Polygon') {
+        if (!buffered || !buffered.geometry || buffered.geometry.type !== 'Polygon') {
             console.warn('Invalid wall polygon:', buffered);
             return;
         }
@@ -345,12 +345,12 @@ const Editor: React.FC = () => {
 
     if (mode === 'edit_furniture') {
       const furnitureFeature = featuresAtPoint.find(
-        (f) => f.properties.type === 'furniture' || f.properties.type === 'door'
+        (f) => f.properties.type === 'furniture' || f.properties?.type === 'door'
       ) as FurnitureFeature | undefined;
       setSelectedFurniture(furnitureFeature || null);
       setSelectedFeatureId(null);
     } else {
-      const roomFeature = featuresAtPoint.find((f) => f.properties.type === 'room') as RoomFeature | undefined;
+      const roomFeature = featuresAtPoint.find((f) => f.properties?.type === 'room') as RoomFeature | undefined;
       setSelectedFeatureId(roomFeature || null);
       setSelectedFurniture(null);
     }
@@ -409,7 +409,7 @@ const Editor: React.FC = () => {
             if (transform.orientation !== undefined) {
               newProps.orientation = transform.orientation;
               const centroid = turf.centroid(f).geometry.coordinates;
-              newGeom = turf.transformRotate(f.geometry as Polygon, transform.orientation - f.properties.orientation, {
+              newGeom = turf.transformRotate(f.geometry as Polygon, transform.orientation - f.properties?.orientation, {
                 pivot: centroid,
               }).geometry as Polygon;
             }
@@ -420,12 +420,12 @@ const Editor: React.FC = () => {
               const centroid = turf.centroid(f).geometry.coordinates;
               newGeom = turf.transformScale(
                 f.geometry as Polygon,
-                newProps.scaleX / f.properties.scaleX,
+                newProps.scaleX / f.properties?.scaleX,
                 { origin: centroid }
               ).geometry as Polygon;
               newGeom = turf.transformScale(
                 newGeom,
-                newProps.scaleY / f.properties.scaleY,
+                newProps.scaleY / f.properties?.scaleY,
                 { origin: centroid }
               ).geometry as Polygon;
             }
@@ -538,15 +538,15 @@ const Editor: React.FC = () => {
       furniturePolygon = turf.buffer(pointGeo, sizes.width / 2, { units: 'meters', steps: 16 });
     }
 
-    if (!furniturePolygon.geometry || furniturePolygon.geometry.type !== 'Polygon') {
+    if (!furniturePolygon?.geometry || furniturePolygon.geometry.type !== 'Polygon') {
       console.error('Invalid polygon geometry created for furniture');
       return;
     }
 
     const furnitureFeature: FurnitureFeature = {
       type: 'Feature',
-      id: generateUniqueId('furniture'),
-      geometry: furniturePolygon.geometry as Polygon,
+      id: generateUniqueId(),
+      geometry: furniturePolygon?.geometry as Polygon,
       properties: {
         type: data.id === 'cube' ? 'door' : 'furniture',
         item: data.id,
@@ -570,11 +570,11 @@ const Editor: React.FC = () => {
         console.warn('Feature does not have an ID:', feature);
         return;
     }
-    if (feature.properties.type === 'furniture' || feature.properties.type === 'door') {
+    if (feature.properties?.type === 'furniture' || feature.properties?.type === 'door') {
         setSelectedFurniture(feature as FurnitureFeature);
         setSelectedFeatureId(null);
         setMode('edit_furniture');
-    } else if (feature.properties.type === 'room') {
+    } else if (feature.properties?.type === 'room') {
         setSelectedFeatureId(feature.id as string); // <- use ID here
         setSelectedFurniture(null);
         setMode('simple_select');
@@ -952,7 +952,7 @@ const Editor: React.FC = () => {
                         }`}
                         onClick={() => handleLayerSelect(feature)}
                       >
-                        {feature.properties.name || `Room ${roomFeatures.features.indexOf(feature) + 1}`}
+                        {feature.properties?.name || `Room ${roomFeatures.features.indexOf(feature) + 1}`}
                       </div>
                     ))
                   )}
@@ -977,7 +977,7 @@ const Editor: React.FC = () => {
                       }`}
                       onClick={() => handleLayerSelect(feature)}
                     >
-                      {feature.properties.emoji} {feature.properties.item}{' '}
+                      {feature.properties?.emoji} {feature.properties?.item}{' '}
                       {furnitureFeatures.features.indexOf(feature) + 1}
                     </div>
                   ))}
