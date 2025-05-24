@@ -70,7 +70,7 @@ interface FurnitureItem {
 }
 
 // Editor Modes
-type EditorMode = 'draw_wall' | 'draw_room' | 'place_furniture' | 'edit_furniture';
+type EditorMode = 'draw_wall' | 'draw_room' | 'place_furniture' | 'edit_furniture' | 'simple_select';
 
 // Furniture Library
 const furnitureLibrary: FurnitureItem[] = [
@@ -335,23 +335,24 @@ const Editor: React.FC = () => {
     e.preventDefault();
     e.originalEvent.stopPropagation();
 
-    const bbox = [
+    const bbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
       [e.point.x - 20, e.point.y - 20],
       [e.point.x + 20, e.point.y + 20],
     ];
+
     const featuresAtPoint = map.current.queryRenderedFeatures(bbox, {
       layers: ['rooms', 'furniture', 'doors'],
     });
 
     if (mode === 'edit_furniture') {
       const furnitureFeature = featuresAtPoint.find(
-        (f) => f.properties.type === 'furniture' || f.properties?.type === 'door'
+        (f) => f.properties?.type === 'furniture' || f.properties?.type === 'door'
       ) as FurnitureFeature | undefined;
       setSelectedFurniture(furnitureFeature || null);
       setSelectedFeatureId(null);
     } else {
       const roomFeature = featuresAtPoint.find((f) => f.properties?.type === 'room') as RoomFeature | undefined;
-      setSelectedFeatureId(roomFeature || null);
+      setSelectedFeatureId(roomFeature ? roomFeature.id as string : null);
       setSelectedFurniture(null);
     }
   }, [mode]);
@@ -377,7 +378,7 @@ const Editor: React.FC = () => {
           features: prev.features.map((f) => {
             if (f.id === selectedFurniture.id && f.geometry) {
               const newGeom = turf.transformTranslate(f.geometry as Polygon, delta[0], delta[1], { units: 'degrees' });
-              return { ...f, geometry: newGeom.geometry as Polygon };
+              return { ...f, geometry: newGeom as Polygon };
             }
             return f;
           }),
@@ -409,25 +410,25 @@ const Editor: React.FC = () => {
             if (transform.orientation !== undefined) {
               newProps.orientation = transform.orientation;
               const centroid = turf.centroid(f).geometry.coordinates;
-              newGeom = turf.transformRotate(f.geometry as Polygon, transform.orientation - f.properties?.orientation, {
+              newGeom = turf.transformRotate(f as Feature<Polygon>, transform.orientation - f.properties?.orientation, {
                 pivot: centroid,
               }).geometry as Polygon;
             }
 
             if (transform.scaleX !== undefined || transform.scaleY !== undefined) {
-              newProps.scaleX = transform.scaleX !== undefined ? transform.scaleX : f.properties.scaleX;
-              newProps.scaleY = transform.scaleY !== undefined ? transform.scaleY : f.properties.scaleY;
+              newProps.scaleX = transform.scaleX !== undefined ? transform.scaleX : f.properties?.scaleX;
+              newProps.scaleY = transform.scaleY !== undefined ? transform.scaleY : f.properties?.scaleY;
               const centroid = turf.centroid(f).geometry.coordinates;
               newGeom = turf.transformScale(
                 f.geometry as Polygon,
                 newProps.scaleX / f.properties?.scaleX,
                 { origin: centroid }
-              ).geometry as Polygon;
+              ) as Polygon;
               newGeom = turf.transformScale(
                 newGeom,
                 newProps.scaleY / f.properties?.scaleY,
                 { origin: centroid }
-              ).geometry as Polygon;
+              ) as Polygon;
             }
 
             return { ...f, geometry: newGeom, properties: newProps };
@@ -509,10 +510,7 @@ const Editor: React.FC = () => {
 
     const data = JSON.parse(json);
     const rect = mapContainer.current.getBoundingClientRect();
-    const point = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
+    const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
 
     const lngLat = map.current.unproject(point);
     const pointGeo = turf.point([lngLat.lng, lngLat.lat]);
@@ -1131,11 +1129,13 @@ const Editor: React.FC = () => {
                 const newMode = e.target.value as EditorMode;
                 setMode(newMode);
                 draw.current?.changeMode(
-                  newMode === 'draw_wall'
-                    ? 'draw_line_string'
-                    : newMode === 'draw_room'
-                    ? 'draw_polygon'
-                    : 'simple_select'
+                  (
+                    newMode === 'draw_wall'
+                      ? 'draw_line_string'
+                      : newMode === 'draw_room'
+                      ? 'draw_polygon'
+                      : 'simple_select'
+                  ) as any
                 );
                 if (newMode !== 'edit_furniture') setSelectedFurniture(null);
               }}
