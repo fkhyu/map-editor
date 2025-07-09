@@ -25,7 +25,7 @@ const [mode, setMode] = useState<EditorMode>('simple_select');
 const [wallFeatures, setWallFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [roomFeatures, setRoomFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [furnitureFeatures, setFurnitureFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
-// const [poiFeatures, setPoiFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
+const [poiFeatures, setPoiFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [wallWidth, setWallWidth] = useState(DEFAULT_WALL_WIDTH);
 const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
 const [selectedRoom, setSelectedRoom] = useState<Feature | null>(null);
@@ -2160,7 +2160,7 @@ useEffect(() => {
         wallFeatures,
         roomFeatures,
         furnitureFeatures,
-        // poiFeatures,
+        poiFeatures,
         wallWidth,
         selectedFeatureId,
         selectedRoom, // Export selectedRoom
@@ -2173,7 +2173,7 @@ useEffect(() => {
         setWallFeatures,
         setRoomFeatures,
         setFurnitureFeatures,
-        // setPoiFeatures,
+        setPoiFeatures,
         setWallWidth,
         setSelectedFeatureId,
         setSelectedRoom, // Export setSelectedRoom
