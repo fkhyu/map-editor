@@ -5,7 +5,6 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from "next/navigation";
 
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -21,14 +20,15 @@ export default async function EditorLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = createServerComponentClient({ cookies });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // const supabase = createServerComponentClient({ cookies });
+  // const {
+  //   data: { session },
+  // } = await supabase.auth.getSession();
 
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      {session ? children : <div className="flex h-screen w-full items-center justify-center flex-col">Access Denied: Please log in <button onClick={redirect('/login')}>Log in</button></div>}
+      {/* {session ? children : <div className="flex h-screen w-full items-center justify-center flex-col">Access Denied: Please log in <button onClick={redirect('/login')}>Log in</button></div>} */}
+      {children}
     </div>
   );
 }

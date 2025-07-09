@@ -7,9 +7,8 @@ import * as turf from '@turf/turf';
 import { FeatureCollection, Feature, Polygon, LineString } from 'geojson';
 import { supabase } from '@/lib/supabaseClient';
 import { WallFeature, FurnitureFeature, RoomFeature, EditorMode } from '../lib/types';
-import { FURNITURE_SIZES, DEFAULT_WALL_WIDTH, WALL_HEIGHT, MAPBOX_STYLE, DEFAULT_CENTER, DEFAULT_ZOOM } from '../lib/constants';
-import { debounce, rotateFeature, capitalise } from '../lib/utils';
-import { url } from 'inspector';
+import { FURNITURE_SIZES, DEFAULT_WALL_WIDTH, WALL_HEIGHT, DEFAULT_CENTER, DEFAULT_ZOOM } from '../lib/constants';
+import { debounce, rotateFeature } from '../lib/utils';
 
 
 export const useEditor = (
@@ -26,7 +25,7 @@ const [mode, setMode] = useState<EditorMode>('simple_select');
 const [wallFeatures, setWallFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [roomFeatures, setRoomFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [furnitureFeatures, setFurnitureFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
-const [poiFeatures, setPoiFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
+// const [poiFeatures, setPoiFeatures] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] });
 const [wallWidth, setWallWidth] = useState(DEFAULT_WALL_WIDTH);
 const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
 const [selectedRoom, setSelectedRoom] = useState<Feature | null>(null);
@@ -39,6 +38,7 @@ const [expandedLayers, setExpandedLayers] = useState<{ [key: string]: boolean }>
 const [mapLoaded, setMapLoaded] = useState(false);
 const [dataLoaded, setDataLoaded] = useState(false);
 const [rotationInput, setRotationInput] = useState<number>(0);
+const [isSatellite, setIsSatellite] = useState(false);
 
 const generateUniqueId = () => crypto.randomUUID();
 
@@ -49,6 +49,12 @@ const selectedFeature = useMemo(() => {
     null
     );
 }, [roomFeatures, wallFeatures, selectedFeatureId]);
+
+const MAPBOX_STYLE = useMemo(() => {
+    return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      ? isSatellite ? 'mapbox://styles/mapbox/satellite-v9' : 'mapbox://styles/mapbox/dark-v10'
+      : isSatellite ? 'mapbox://styles/mapbox/satellite-v9' : 'mapbox://styles/mapbox/streets-v12';
+  }, [isSatellite]);
 
 // Initialize Map
 const initializeMapLayers = useCallback(() => {
@@ -64,26 +70,37 @@ const initializeMapLayers = useCallback(() => {
         {name: 'event', url: '/icons/event.png'},
     ]
 
-    // Add sources
-    mapInstance.addSource('walls', {
-    type: 'geojson',
-    data: wallFeatures,
-    });
+    const m = map.current;
+    if (!m) return;
 
-    mapInstance.addSource('rooms', {
-    type: 'geojson',
-    data: roomFeatures,
-    });
+    // 🧱 Source: walls
+    if (!m.getSource('walls')) {
+        m.addSource('walls', {
+            type: 'geojson',
+            data: wallFeatures,
+        });
+    }
 
-    mapInstance.addSource('furniture', {
-    type: 'geojson',
-    data: furnitureFeatures,
-    });
+    // 🏠 Source: rooms
+    if (!m.getSource('rooms')) {
+        m.addSource('rooms', {
+            type: 'geojson',
+            data: roomFeatures,
+        });
+    }
 
-    mapInstance.addSource('poi', {
-        type: 'geojson',
-        data: poiFeatures,
-    })
+    // 🪑 Source: furniture
+    if (!m.getSource('furniture')) {
+        m.addSource('furniture', {
+            type: 'geojson',
+            data: furnitureFeatures,
+        });
+    }
+
+    // mapInstance.addSource('poi', {
+    //     type: 'geojson',
+    //     data: poiFeatures,
+    // })
 
     console.log('Adding icons to map:', iconList);
     iconList.forEach((icon) => {
@@ -93,8 +110,10 @@ const initializeMapLayers = useCallback(() => {
                 if (error) {
                     console.error('Error loading icon:', icon.name, error);
                     return;
-                }            
-                mapInstance.addImage(icon.name, image!);
+                }  
+                if (!mapInstance.hasImage(icon.name)) {          
+                    mapInstance.addImage(icon.name, image!);
+                }
                 console.log('Icon loaded:', icon.name, image);
             });
         } else {
@@ -106,7 +125,9 @@ const initializeMapLayers = useCallback(() => {
                     console.error('Error loading icon:', icon.name, error);
                     return;
                 }            
-                mapInstance.addImage(icon.name, image!);
+                if (!mapInstance.hasImage(icon.name)) {
+                    mapInstance.addImage(icon.name, image!);
+                }
                 console.log('Icon loaded:', icon.name, image);
             });
 
@@ -115,121 +136,149 @@ const initializeMapLayers = useCallback(() => {
     })
 
     // Add layers
-    mapInstance.addLayer({
-        id: 'poi',
-        type: 'circle',
-        source: 'poi',
-        minzoom: 10,
+    // mapInstance.addLayer({
+    //     id: 'poi',
+    //     type: 'circle',
+    //     source: 'poi',
+    //     minzoom: 10,
+    //     paint: {
+    //         'circle-color': '#E78F4A',
+    //         'circle-radius': 12,
+    //         'circle-stroke-width': 2,
+    //         'circle-stroke-color': '#fff',
+    //     },
+    // });
+
+    // mapInstance.addLayer({
+    //     id: 'poi-icons',
+    //     type: 'symbol',
+    //     source: 'poi',
+    //     minzoom: 10,
+    //     layout: {
+    //         'icon-image': ['get', 'type'],
+    //         'icon-size': 0.7,
+    //     }
+    // });
+
+    if (!mapInstance.getLayer('walls')) {
+        mapInstance.addLayer({
+        id: 'walls',
+        type: 'fill',
+        source: 'walls',
         paint: {
-            'circle-color': '#E78F4A',
-            'circle-radius': 12,
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#fff',
+            'fill-color': '#888888',
+            'fill-opacity': 0.8,
         },
-    });
+        });
+    }
 
-    mapInstance.addLayer({
-        id: 'poi-icons',
-        type: 'symbol',
-        source: 'poi',
-        minzoom: 10,
-        layout: {
-            'icon-image': ['get', 'type'],
-            'icon-size': 0.7,
-        }
-    });
+    if (!mapInstance.getLayer('rooms')) {
+        mapInstance.addLayer({
+        id: 'rooms',
+        type: 'fill',
+        source: 'rooms',
+        paint: {
+            'fill-color': ['get', 'color'],
+            // 'fill-opacity': 0.5,
+        },
+        });
+    }
 
-    mapInstance.addLayer({
-    id: 'walls',
-    type: 'fill',
-    source: 'walls',
-    paint: {
-        'fill-color': '#888888',
-        'fill-opacity': 0.8,
-    },
-    });
+    if (!mapInstance.getLayer('furniture-icons')) {
+        mapInstance.addLayer({
+            id: 'furniture',
+            type: 'fill',
+            source: 'furniture',
+            paint: {
+                'fill-color': '#ffcc00',
+                'fill-opacity': 0.7,
+            },
+        });
+    }
 
-    mapInstance.addLayer({
-    id: 'rooms',
-    type: 'fill',
-    source: 'rooms',
-    paint: {
-        'fill-color': ['get', 'color'],
-        'fill-opacity': 0.5,
-    },
-    });
+    if (!mapInstance.getLayer('furniture-icons')) {
+        mapInstance.addLayer({
+            id: 'furniture-icons',
+            type: 'symbol',
+            source: 'furniture',
+            layout: {
+                'text-field': ['get', 'emoji'],
+                'text-size': 20,
+                'text-anchor': 'center',
+                'text-offset': [0, 0],
+            },
+        });
+    }
 
-    mapInstance.addLayer({
-    id: 'furniture',
-    type: 'fill',
-    source: 'furniture',
-    paint: {
-        'fill-color': '#ffcc00',
-        'fill-opacity': 0.7,
-    },
-    });
 
-    mapInstance.addLayer({
-    id: 'furniture-icons',
-    type: 'symbol',
-    source: 'furniture',
-    layout: {
-        'text-field': ['get', 'emoji'],
-        'text-size': 20,
-        'text-anchor': 'center',
-        'text-offset': [0, 0],
-    },
-    });
-
-    // Walls extrusion
-    mapInstance.addLayer({
-    id: 'walls-extrusion',
-    type: 'fill-extrusion',
-    source: 'walls',
-    paint: {
-        'fill-extrusion-color': '#888888',
-        'fill-extrusion-height': ['get', 'height'],
-        'fill-extrusion-base': 0,
-        'fill-extrusion-opacity': 0.9,
-    },
-    }, 'furniture'); // insert below furniture for correct stacking
+    if (!mapInstance.getLayer('walls-extrusion')) {
+        mapInstance.addLayer({
+        id: 'walls-extrusion',
+        type: 'fill-extrusion',
+        source: 'walls',
+        paint: {
+            'fill-extrusion-color': '#888888',
+            'fill-extrusion-height': ['get', 'height'],
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': 0.9,
+        },
+    }, 'furniture');
+    }
 
     // Furniture extrusion
-    mapInstance.addLayer({
-    id: 'furniture-extrusion',
-    type: 'fill-extrusion',
-    source: 'furniture',
-    paint: {
-        'fill-extrusion-color': '#ffcc00',
-        'fill-extrusion-height': ['get', 'height'],
-        'fill-extrusion-base': 0,
-        'fill-extrusion-opacity': 0.9,
-    },
-    }, 'furniture-icons'); // insert below icons
+    if (!mapInstance.getLayer('furniture-extrusion')) {
+        mapInstance.addLayer({
+        id: 'furniture-extrusion',
+        type: 'fill-extrusion',
+        source: 'furniture',
+        paint: {
+            'fill-extrusion-color': '#ffcc00',
+            'fill-extrusion-height': ['get', 'height'],
+            'fill-extrusion-base': 0,
+            'fill-extrusion-opacity': 0.9,
+        },
+        }, 'furniture-icons');
+    }
 
     // Room labels
-    mapInstance.addLayer({
-    id: 'room-labels',
-    type: 'symbol',
-    source: 'rooms',
-    layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 16,
-        'text-anchor': 'center',
-        // 'symbol-placement': 'point',
-    },
-    paint: {
-        'text-color': '#fff',
-        // 'text-halo-color': '#222',
-        // 'text-halo-width': 1,
-    },
-    }, 'furniture');
-}, []);
+    if (!mapInstance.getLayer('room-labels')) {
+        mapInstance.addLayer({
+        id: 'room-labels',
+        type: 'symbol',
+        source: 'rooms',
+        layout: {
+            'text-field': [
+                'concat',
+                ['get', 'number'],
+                '\n',
+                ['get', 'name'],
+            ],
+            'text-size': 16,
+            'text-anchor': 'center',
+            // 'symbol-placement': 'point',
+        },
+        paint: {
+            'text-color': '#8A919C',
+            // 'text-halo-color': '#222',
+            // 'text-halo-width': 1,
+        },
+        }, 'furniture');
+    }
+}, [isSatellite]);
 
 useEffect(() => {
     if (map.current && map.current.getSource('walls') && map.current.isStyleLoaded()) {
         if (wallFeatures.type === 'FeatureCollection' && Array.isArray(wallFeatures.features)) {
-            (map.current.getSource('walls') as mapboxgl.GeoJSONSource).setData(wallFeatures);
+            // Validate all features have valid geometry before updating
+            const validFeatures = wallFeatures.features.filter(f => 
+                f.geometry && 
+                f.geometry.type && 
+                f.geometry.type !== 'GeometryCollection' && 
+                'coordinates' in f.geometry && 
+                f.geometry.coordinates
+            );
+            const validGeoJSON = { ...wallFeatures, features: validFeatures };
+            (map.current.getSource('walls') as mapboxgl.GeoJSONSource).setData(validGeoJSON);
         } else {
             console.warn('Invalid wallFeatures data:', wallFeatures);
         }
@@ -240,8 +289,17 @@ useEffect(() => {
     if (map.current && map.current.getSource('rooms') && map.current.isStyleLoaded()) {
     console.log('Updating roomFeatures on map');
         if (roomFeatures.type === 'FeatureCollection' && Array.isArray(roomFeatures.features)) {
-            (map.current.getSource('rooms') as mapboxgl.GeoJSONSource).setData(roomFeatures);
-            console.log('Room features updated:', roomFeatures);
+            // Validate all features have valid geometry before updating
+            const validFeatures = roomFeatures.features.filter(f => 
+                f.geometry && 
+                f.geometry.type && 
+                f.geometry.type !== 'GeometryCollection' && 
+                'coordinates' in f.geometry && 
+                f.geometry.coordinates
+            );
+            const validGeoJSON = { ...roomFeatures, features: validFeatures };
+            (map.current.getSource('rooms') as mapboxgl.GeoJSONSource).setData(validGeoJSON);
+            console.log('Room features updated:', validGeoJSON);
         } else {
             console.warn('Invalid roomFeatures data:', roomFeatures);
         }
@@ -253,22 +311,31 @@ useEffect(() => {
 useEffect(() => {
     if (map.current && map.current.getSource('furniture') && map.current.isStyleLoaded()) {
         if (furnitureFeatures.type === 'FeatureCollection' && Array.isArray(furnitureFeatures.features)) {
-            (map.current.getSource('furniture') as mapboxgl.GeoJSONSource).setData(furnitureFeatures);
+            // Validate all features have valid geometry before updating
+            const validFeatures = furnitureFeatures.features.filter(f => 
+                f.geometry && 
+                f.geometry.type && 
+                f.geometry.type !== 'GeometryCollection' && 
+                'coordinates' in f.geometry && 
+                f.geometry.coordinates
+            );
+            const validGeoJSON = { ...furnitureFeatures, features: validFeatures };
+            (map.current.getSource('furniture') as mapboxgl.GeoJSONSource).setData(validGeoJSON);
         } else {
             console.warn('Invalid furnitureFeatures data:', furnitureFeatures);
         }
     }
 }, [furnitureFeatures]);
 
-useEffect(() => {
-    if (map.current && map.current.getSource('poi') && map.current.isStyleLoaded()) {
-        if (poiFeatures.type === 'FeatureCollection' && Array.isArray(poiFeatures.features)) {
-            (map.current.getSource('poi') as mapboxgl.GeoJSONSource).setData(poiFeatures);
-        } else {
-            console.warn('Invalid poiFeatures data:', poiFeatures);
-        }
-    }
-})
+// useEffect(() => {
+//     if (map.current && map.current.getSource('poi') && map.current.isStyleLoaded()) {
+//         if (poiFeatures.type === 'FeatureCollection' && Array.isArray(poiFeatures.features)) {
+//             (map.current.getSource('poi') as mapboxgl.GeoJSONSource).setData(poiFeatures);
+//         } else {
+//             console.warn('Invalid poiFeatures data:', poiFeatures);
+//         }
+//     }
+// })
 
 
 useEffect(() => {
@@ -276,180 +343,359 @@ useEffect(() => {
 
     const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
     if (!accessToken) {
-    throw new Error('Mapbox access token is missing. Please set NEXT_PUBLIC_MAPBOX_TOKEN in your environment variables.');
+        throw new Error('Mapbox access token is missing.');
     }
     mapboxgl.accessToken = accessToken;
 
     map.current = new mapboxgl.Map({
-    container: mapContainer.current,
-    style: MAPBOX_STYLE,
-    center: DEFAULT_CENTER,
-    zoom: DEFAULT_ZOOM,
+        container: mapContainer.current,
+        style: MAPBOX_STYLE,
+        center: DEFAULT_CENTER,
+        zoom: DEFAULT_ZOOM,
     });
 
+    // Initialize MapboxDraw only once
     draw.current = new MapboxDraw({
-    displayControlsDefault: false,
-    controls: {
-        polygon: true,
-        line_string: true,
-        trash: true,
-    },
+        displayControlsDefault: false,
+        controls: {
+            polygon: true,
+            line_string: true,
+            trash: true,
+        },
     });
 
+    const styleOptions = [
+        { label: '🗺️', explanation: "default", style: 'default' },
+        { label: '🛰️', explanation: "satellite", style: 'satellite' },
+    ];
+
+    class StyleSwitcherControl {
+        private styles: { label: string; explanation: string; style: string }[];
+        private map: mapboxgl.Map | null = null;
+        private container: HTMLDivElement | null = null;
+
+        constructor(styles: { label: string; style: string; explanation: string }[]) {
+            this.styles = styles;
+        }
+
+        onAdd(map: mapboxgl.Map) {
+            this.map = map;
+            this.container = document.createElement('div');
+            this.container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
+            this.container.style.display = 'flex flex-col';
+            this.container.style.flexDirection = 'row';
+
+            this.styles.forEach(({ label, explanation, style }) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.title = `Switch to ${explanation}`;
+                button.onclick = () => {
+                    if (style === "satellite") {
+                        setIsSatellite(true);
+                    } else {
+                        setIsSatellite(false);
+                    }
+                };
+                this.container!.appendChild(button);
+            });
+
+            return this.container;
+        }
+
+        onRemove() {
+            this.container?.remove();
+            this.map = null;
+        }
+    }
+
+    // Flag to track if draw control has been added
+    let isDrawControlAdded = false;
+
+    // Add the draw control initially
     map.current.addControl(draw.current);
+    map.current.addControl(new StyleSwitcherControl(styleOptions), 'top-right');
+    isDrawControlAdded = true;
+
+    const handleStyleLoad = () => {
+        // Re-initialize map layers
+        
+        // Reset all features to prevent artifacts from previous style
+        if (map.current) {
+            // Clean existing layers first, then sources
+            // Remove layers in the correct order
+            
+            // First remove all layers
+            [
+                'furniture-icons', 
+                'furniture-extrusion', 
+                'furniture', 
+                'room-labels', 
+                'walls-extrusion',
+                'rooms',
+                'walls',
+                'furniture-preview', 
+                'room-preview'
+            ].forEach(id => {
+                if (map.current?.getLayer(id)) {
+                    map.current.removeLayer(id);
+                }
+            });
+            
+            // Then remove sources
+            [
+                'walls', 
+                'rooms', 
+                'furniture', 
+                'furniture-preview', 
+                'room-preview'
+            ].forEach(id => {
+                if (map.current?.getSource(id)) {
+                    map.current.removeSource(id);
+                }
+            });
+        }
+        
+        // Re-initialize map layers after cleaning
+        initializeMapLayers();
+    };
 
     map.current.on('load', () => {
-    setMapLoaded(true);
-    initializeMapLayers();
+        setMapLoaded(true);
+        initializeMapLayers();
     });
 
+    map.current.on('style.load', handleStyleLoad);
+
     return () => {
-    map.current?.remove();
-    map.current = null;
+        // Clean up event listeners and controls
+        map.current?.off('style.load', handleStyleLoad);
+        if (map.current && draw.current) {
+            map.current.removeControl(draw.current); // Remove the draw control
+            // Clean up any remaining draw sources
+            ['mapbox-gl-draw-cold', 'mapbox-gl-draw-hot'].forEach(sourceId => {
+                if (map.current?.getSource(sourceId)) {
+                    map.current.removeSource(sourceId);
+                }
+            });
+        }
+        map.current?.remove();
+        map.current = null;
+        draw.current = null; // Clear the draw reference
+        isDrawControlAdded = false; // Reset flag on unmount
     };
 }, [initializeMapLayers]);
 
-// Fetch data from Supabase
 useEffect(() => {
-    if (!mapLoaded) return;
+  if (!mapLoaded) return;
 
-    const loadData = async () => {
-    const { data: wallsData, error: wallsError } = await supabase
+  const loadData = async () => {
+    try {
+      // Fetch valid room IDs
+      const { data: roomData, error: roomError } = await supabase
+        .from('rooms')
+        .select('id');
+      if (roomError) throw new Error(`Failed to load room IDs: ${roomError.message}`);
+      const validRoomIds = new Set(roomData?.map(r => r.id) || []);
+      console.log('Valid room IDs:', Array.from(validRoomIds));
+
+      // Load walls
+      const { data: wallsData, error: wallsError } = await supabase
         .from('features')
         .select('*')
         .eq('type', 'wall');
+      if (wallsError) throw new Error(`Failed to load walls: ${wallsError.message}`);
 
-    if (wallsError) {
-        console.error('Error loading walls:', wallsError);
-    } else if (wallsData) {
-        setWallFeatures({
-        type: 'FeatureCollection',
-        features: wallsData.map((item) => ({
-            id: item.id,
-            type: 'Feature',
-            geometry: item.geometry,
-            properties: {
+      const validWalls = wallsData
+        .filter(item => 
+          item.geometry && 
+          item.geometry.type === 'Polygon' && 
+          Array.isArray(item.geometry.coordinates) &&
+          item.geometry.coordinates.length > 0 &&
+          item.geometry.coordinates[0].length >= 4 &&
+          (!item.for || validRoomIds.has(item.for))
+        )
+        .map(item => ({
+          id: item.id,
+          type: "Feature" as const,
+          geometry: item.geometry,
+          properties: {
             type: 'wall',
             width: item.width || DEFAULT_WALL_WIDTH,
             height: WALL_HEIGHT,
             for: item.for || null,
-            },
-        })),
-        });
-    }
+          },
+        }));
+      setWallFeatures({ type: 'FeatureCollection', features: validWalls });
+      console.log('Loaded walls:', validWalls.map(f => ({ id: f.id, geometry: f.geometry })));
 
-    const { data: roomsData, error: roomsError } = await supabase
-        .from('rooms')
-        .select('*');
-
-    if (roomsError) {
-        console.error('Error loading rooms:', roomsError);
-    } else if (roomsData) {
-        setRoomFeatures({
-        type: 'FeatureCollection',
-        features: roomsData.map((item) => ({
-            id: item.id,
-            type: 'Feature',
-            geometry: item.geometry,
-            properties: {
-                id: item.id,
-                type: 'room',
-                name: item.title,
-                number: item.room_number,
-                color: item.color || '#ff0000',
-                bookable: item.bookable,
-                capacity: item.seats,
-                avEquipment: item.avEquipment || [],
-                purpose: item.description,
-                icon: item.icon || '🏢',
-                wallified: item.wallified || false,
-            },
-        })),
-        });
-    }
-
-    const { data: furnitureData, error: furnitureError } = await supabase
+      // Load furniture
+      const { data: furnitureData, error: furnitureError } = await supabase
         .from('features')
         .select('*')
         .eq('type', 'furniture');
+      if (furnitureError) throw new Error(`Failed to load furniture: ${furnitureError.message}`);
 
-    if (furnitureError) {
-        console.error('Error loading furniture:', furnitureError);
-    } else if (furnitureData) {
-        setFurnitureFeatures({
-        type: 'FeatureCollection',
-        features: furnitureData.map((item) => {
-            const size = FURNITURE_SIZES[item.name.toLowerCase() as keyof typeof FURNITURE_SIZES];
-            return {
-                id: item.id,
-                type: 'Feature',
-                geometry: item.geometry,
-                properties: {
-                    type: 'furniture',
-                    id: item.id,
-                    item: item.name,
-                    emoji: item.icon,
-                    height: size.height, // Use height from constants
-                    shape: item.shape,
-                    rotation: item.rotation || 0,
-                    label: item.label,
-                    scaleX: item.scaleX || 1,
-                    scaleY: item.scaleY || 1,
-                    originalGeometry: item.originalGeometry,
-                },
-            };
-        }),
+      const validFurniture = furnitureData
+        .filter(item => 
+          item.geometry && 
+          item.geometry.type === 'Polygon' && 
+          Array.isArray(item.geometry.coordinates) &&
+          item.geometry.coordinates.length > 0 &&
+          item.geometry.coordinates[0].length >= 4
+        )
+        .map(item => {
+          const size = FURNITURE_SIZES[item.name?.toLowerCase() as keyof typeof FURNITURE_SIZES] || { height: 1 };
+          return {
+            id: item.id,
+            type: "Feature" as const,
+            geometry: item.geometry,
+            properties: {
+              type: 'furniture',
+              id: item.id,
+              item: item.name || 'unknown',
+              emoji: item.icon || '🪑',
+              height: size.height || 1,
+              shape: item.shape || 'square',
+              rotation: item.rotation || 0,
+              label: item.label || item.name || 'Unknown',
+              scaleX: item.scaleX || 1,
+              scaleY: item.scaleY || 1,
+              originalGeometry: item.originalGeometry || item.geometry,
+            },
+          };
         });
-    }
+      setFurnitureFeatures({ type: 'FeatureCollection', features: validFurniture });
+      console.log('Loaded furniture:', validFurniture.map(f => ({ id: f.id, geometry: f.geometry, item: f.properties?.item })));
 
-    const { data: poiData, error: poiError } = await supabase
-        .from('poi')
+      // Load rooms
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('rooms')
         .select('*');
+      if (roomsError) throw new Error(`Failed to load rooms: ${roomsError.message}`);
 
-    if (poiError) {
-        console.error('Error loading POI:', poiError);
-    } else if (poiData) {
-        setPoiFeatures({
-            type: 'FeatureCollection',
-            features: poiData.map((item) => ({
-                id: item.id,
-                type: 'Feature',
-                geometry: {
-                    type: 'Point',
-                    coordinates: [item.lon, item.lat],
-                },
-                properties: {
-                    id: item.id,
-                    isPOI: true,
-                    title: item.title,
-                    type: item.type,
-                    description: item.desc,
-                    image_url: item.image_url || '',
-                    icon_url: item.icon_url || '',
-                    address: item.address || '',
-                    event_id: item.event_id || null,
-                },
-            })),
-        })
+      const validRooms = roomsData
+        .filter(item => 
+          item.geometry && 
+          item.geometry.type === 'Polygon' && 
+          Array.isArray(item.geometry.coordinates) &&
+          item.geometry.coordinates.length > 0 &&
+          item.geometry.coordinates[0].length >= 4
+        )
+        .map(item => ({
+          id: item.id,
+          type: "Feature" as const,
+          geometry: item.geometry,
+          properties: {
+            id: item.id,
+            type: 'room',
+            name: item.title || 'Unnamed Room',
+            number: item.room_number || null,
+            color: item.color || '#ff0000',
+            bookable: item.bookable || false,
+            capacity: item.seats || 0,
+            avEquipment: item.avEquipment || [],
+            purpose: item.description || '',
+            icon: item.icon || '🏢',
+            wallified: item.wallified,
+          },
+        }));
+      setRoomFeatures({ type: 'FeatureCollection', features: validRooms });
+      console.log('Loaded rooms:', validRooms.map(r => ({ id: r.id, geometry: r.geometry })));
 
-        console.log('POI features loaded:', poiData);
+      setDataLoaded(true);
+    } catch (err: any) {
+      console.error('Error loading data:', err);
+      setDataLoaded(false);
     }
+  };
 
-    setDataLoaded(true);
-    };
-
-    loadData();
+  loadData();
 }, [mapLoaded]);
 
 // Update map sources when features change
 useEffect(() => {
     if (map.current && mapLoaded) {
-        (map.current.getSource('walls') as mapboxgl.GeoJSONSource | undefined)?.setData(wallFeatures);
-        (map.current.getSource('rooms') as mapboxgl.GeoJSONSource | undefined)?.setData(roomFeatures);
-        (map.current.getSource('furniture') as mapboxgl.GeoJSONSource | undefined)?.setData(furnitureFeatures);
-        (map.current.getSource('poi') as mapboxgl.GeoJSONSource | undefined)?.setData(poiFeatures);
+        // More strict validation for features
+        const filterValid = (features: any[]) =>
+            features
+                .map(f => {
+                    if (!f) return null;
+                    
+                    let geom = f.geometry;
+                    if (typeof geom === 'string') {
+                        try {
+                            geom = JSON.parse(geom);
+                        } catch {
+                            return null;
+                        }
+                    }
+                    
+                    // More strict validation
+                    if (!geom || typeof geom !== 'object') return null;
+                    
+                    // Only allow Polygon or LineString with valid coordinates
+                    if (
+                        (geom.type === 'Polygon' || geom.type === 'LineString') &&
+                        Array.isArray(geom.coordinates) &&
+                        geom.coordinates.length > 0
+                    ) {
+                        // For Polygon, coordinates[0] must also be a valid ring with at least 4 points
+                        if (geom.type === 'Polygon') {
+                            if (!Array.isArray(geom.coordinates[0]) || 
+                                geom.coordinates[0].length < 4) {
+                                return null;
+                            }
+                        }
+                        
+                        // For LineString, must have at least 2 points
+                        if (geom.type === 'LineString' && geom.coordinates.length < 2) {
+                            return null;
+                        }
+                        
+                        return { ...f, geometry: geom };
+                    }
+                    
+                    return null;
+                })
+                .filter(Boolean);
+
+        // Apply validation to all feature collections
+        const validWalls = filterValid(wallFeatures.features);
+        const validRooms = filterValid(roomFeatures.features);
+        const validFurniture = filterValid(furnitureFeatures.features);
+
+        // Create proper GeoJSON objects
+        const wallsGeoJSON: FeatureCollection = { type: "FeatureCollection", features: validWalls };
+        const roomsGeoJSON: FeatureCollection = { type: "FeatureCollection", features: validRooms };
+        const furnitureGeoJSON: FeatureCollection = { type: "FeatureCollection", features: validFurniture };
+
+        // Only update sources if they exist
+        if (map.current.getSource('walls')) {
+            try {
+                (map.current.getSource('walls') as mapboxgl.GeoJSONSource)?.setData(wallsGeoJSON);
+            } catch (e) {
+                console.error('Invalid walls GeoJSON:', e);
+            }
+        }
+        
+        if (map.current.getSource('rooms')) {
+            try {
+                (map.current.getSource('rooms') as mapboxgl.GeoJSONSource)?.setData(roomsGeoJSON);
+            } catch (e) {
+                console.error('Invalid rooms GeoJSON:', e);
+            }
+        }
+        
+        if (map.current.getSource('furniture')) {
+            try {
+                (map.current.getSource('furniture') as mapboxgl.GeoJSONSource)?.setData(furnitureGeoJSON);
+            } catch (e) {
+                console.error('Invalid furniture GeoJSON:', e);
+            }
+        }
     }
-}, [wallFeatures, roomFeatures, furnitureFeatures, poiFeatures, mapLoaded]);
+}, [wallFeatures, roomFeatures, furnitureFeatures, mapLoaded]);
 
 const createFurnitureMarkers = useCallback(
     (mapInstance: mapboxgl.Map, furniture: FurnitureFeature | null, updateTransform: (t: any) => void) => {
@@ -817,8 +1063,8 @@ const setRoomMarkers = useCallback((map: mapboxgl.Map, room: RoomFeature | null)
     el.title = `${room.properties.name} - Corner ${idx + 1}`;
 
     const marker = new mapboxgl.Marker({ element: el, draggable: true })
-    .setLngLat([lng, lat])
-    .addTo(map);
+        .setLngLat([lng, lat])
+        .addTo(map);
 
     marker.on('drag', () => {
     const lngLat = marker.getLngLat();
@@ -991,7 +1237,7 @@ const handleDrawCreate = useCallback(async (e: any) => {
         type: 'room',
         name: `Mystery room ${roomFeatures.features.length + 1}`,
         number: '',
-        color: '#ff0000',
+        color: newFeature.properties?.color || '#EFF2F7',
         bookable: true,
         capacity: 10,
         avEquipment: [],
@@ -1151,7 +1397,7 @@ const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
     ];
 
     const featuresAtPoint = map.current.queryRenderedFeatures(bbox, {
-    layers: ['rooms', 'furniture', 'walls', 'poi'],
+    layers: ['rooms', 'furniture', 'walls'],
     });
 
     console.log('Features at point:', featuresAtPoint);
@@ -1261,46 +1507,46 @@ const handleMapClick = useCallback((e: mapboxgl.MapMouseEvent) => {
     const poiFeature = featuresAtPoint.find(
         (f) => f.layer?.id === 'poi' || f.layer?.id === 'poi-icons' || f.properties?.isPOI
     ) as Feature;
-    if (poiFeature) {
-        if (!poiFeatures || !poiFeatures.features) {
-            console.log('POI features not loaded yet:', poiFeatures);
-            return;
-        }
-        const matchedPOI = poiFeatures.features.find(
-            (f) => f.id === (poiFeature.id || poiFeature.properties?.id)
-        ) as Feature | undefined;
+    // if (poiFeature) {
+    //     if (!poiFeatures || !poiFeatures.features) {
+    //         console.log('POI features not loaded yet:', poiFeatures);
+    //         return;
+    //     }
+    //     const matchedPOI = poiFeatures.features.find(
+    //         (f) => f.id === (poiFeature.id || poiFeature.properties?.id)
+    //     ) as Feature | undefined;
 
-        if (matchedPOI) {
-            setSelectedFeatureId(matchedPOI.id as string);
-            setSelectedFurniture(null);
-            setSelectedRoom(null);
-            showPointInfo(matchedPOI);
-            console.log('Selected POI:', matchedPOI);
-            return;
-        } else {
-            const nonrmalizedPOI: Feature = {
-                ...poiFeature,
-                id: poiFeature.id || poiFeature.properties?.id,
-                properties: {
-                    ...poiFeature.properties,
-                    id: String(poiFeature.properties?.id ?? poiFeature.id ?? ''),
-                },
-            };
-            setSelectedFeatureId(nonrmalizedPOI.id as string);
-            setSelectedFurniture(null);
-            setSelectedRoom(null);
-            showPointInfo(nonrmalizedPOI);
-            console.log('Selected POI (fallback):', nonrmalizedPOI);
-            return;
-        }
-    }
+    //     if (matchedPOI) {
+    //         setSelectedFeatureId(matchedPOI.id as string);
+    //         setSelectedFurniture(null);
+    //         setSelectedRoom(null);
+    //         showPointInfo(matchedPOI);
+    //         console.log('Selected POI:', matchedPOI);
+    //         return;
+    //     } else {
+    //         const nonrmalizedPOI: Feature = {
+    //             ...poiFeature,
+    //             id: poiFeature.id || poiFeature.properties?.id,
+    //             properties: {
+    //                 ...poiFeature.properties,
+    //                 id: String(poiFeature.properties?.id ?? poiFeature.id ?? ''),
+    //             },
+    //         };
+    //         setSelectedFeatureId(nonrmalizedPOI.id as string);
+    //         setSelectedFurniture(null);
+    //         setSelectedRoom(null);
+    //         showPointInfo(nonrmalizedPOI);
+    //         console.log('Selected POI (fallback):', nonrmalizedPOI);
+    //         return;
+    //     }
+    // }
 
     setSelectedFeatureId(null);
     setSelectedFurniture(null);
     setSelectedRoom(null);
     markersRef.current.forEach((marker) => marker.remove());
     }
-}, [mode, setRoomMarkers, furnitureFeatures, setSelectedRoom, selectedRoom, poiFeatures]);
+}, [mode, setRoomMarkers, furnitureFeatures, setSelectedRoom, selectedRoom]);
 
 const handleFurnitureMouseDown = useCallback((e: mapboxgl.MapMouseEvent) => {
     if (mode !== 'simple_select' || !map.current || !selectedFurniture) return;
@@ -1403,71 +1649,72 @@ const handleNativeDrop = useCallback(async (e: DragEvent) => {
 
     console.log(item)
     if (item.type && item.type === 'poi') {
-        const coords: [number, number][] = [
-            [lngLat[0], lngLat[1] - 0.0001]
-        ];
-
-        const uniqueId = generateUniqueId();
-        const newPOI: Feature = {
-            type: item.type,
-            id: uniqueId,
-            geometry: {
-                type: 'Point',
-                coordinates: lngLat,
-            },
-            properties: {
-                type: item.properties.type || 'landmark',
-                id: uniqueId,
-                title: item.name,
-                description: item.description || '',
-                image_url: item.image_url || '',
-                isPOI: true,
-            },
-        };
-        setPoiFeatures((prev) => ({
-            ...prev,
-            features: [...prev.features, newPOI],
-        }));
-        setSelectedFeatureId(uniqueId);
-        setSelectedFurniture(null);
-        setSelectedRoom(null);
-        console.log('item:', item);
-        const poiUniqueId = uniqueId;
-        const { error } = await supabase
-        .from('poi')
-        .insert({
-            id: poiUniqueId,
-            created_at: new Date().toISOString(),
-            lat: lngLat[1],
-            lon: lngLat[0],
-            title: item.title,
-            desc: item.description || null,
-            image_url: item.image_url || null,
-            address: item.address || null,
-            type: item.properties.type || 'landmark',
-            event_id: item.event_id || null,
-        });
-        if (error) {
-            console.error('Error inserting POI:', error);
-            return;
-        }
-
-        if (item.properties.type === 'event') {
-            console.log('event detected')
-            const { error } = await supabase
-                .from('events')
-                .insert({
-                    id: uniqueId,
-                    name: item.title,
-                    description: item.description,
-                    created_at: new Date().toISOString(),
-                    poi_id: poiUniqueId, 
-                });
-            if (error) {
-                console.error('Error inserting event:', error);
-            }
-        }
         return;
+        // const coords: [number, number][] = [
+        //     [lngLat[0], lngLat[1] - 0.0001]
+        // ];
+
+        // const uniqueId = generateUniqueId();
+        // const newPOI: Feature = {
+        //     type: item.type,
+        //     id: uniqueId,
+        //     geometry: {
+        //         type: 'Point',
+        //         coordinates: lngLat,
+        //     },
+        //     properties: {
+        //         type: item.properties.type || 'landmark',
+        //         id: uniqueId,
+        //         title: item.name,
+        //         description: item.description || '',
+        //         image_url: item.image_url || '',
+        //         isPOI: true,
+        //     },
+        // };
+        // setPoiFeatures((prev) => ({
+        //     ...prev,
+        //     features: [...prev.features, newPOI],
+        // }));
+        // setSelectedFeatureId(uniqueId);
+        // setSelectedFurniture(null);
+        // setSelectedRoom(null);
+        // console.log('item:', item);
+        // const poiUniqueId = uniqueId;
+        // const { error } = await supabase
+        // .from('poi')
+        // .insert({
+        //     id: poiUniqueId,
+        //     created_at: new Date().toISOString(),
+        //     lat: lngLat[1],
+        //     lon: lngLat[0],
+        //     title: item.title,
+        //     desc: item.description || null,
+        //     image_url: item.image_url || null,
+        //     address: item.address || null,
+        //     type: item.properties.type || 'landmark',
+        //     event_id: item.event_id || null,
+        // });
+        // if (error) {
+        //     console.error('Error inserting POI:', error);
+        //     return;
+        // }
+
+        // if (item.properties.type === 'event') {
+        //     console.log('event detected')
+        //     const { error } = await supabase
+        //         .from('events')
+        //         .insert({
+        //             id: uniqueId,
+        //             name: item.title,
+        //             description: item.description,
+        //             created_at: new Date().toISOString(),
+        //             poi_id: poiUniqueId, 
+        //         });
+        //     if (error) {
+        //         console.error('Error inserting event:', error);
+        //     }
+        // }
+        // return;
     } else {
         const size = FURNITURE_SIZES[item.id as keyof typeof FURNITURE_SIZES];
         const halfWidth = size.width / 2 / 50000;
@@ -1707,6 +1954,165 @@ const updateRoomProperties = useCallback(
         [selectedFeatureId, setRoomFeatures]
     );
 
+const deleteRoom = useCallback(
+  async (roomId: string) => {
+    if (!roomId || !map.current) return;
+
+    console.log('Deleting room:', roomId);
+    console.log('Initial state:', {
+      rooms: (map.current.getSource('rooms') as mapboxgl.GeoJSONSource)?._data,
+      walls: (map.current.getSource('walls') as mapboxgl.GeoJSONSource)?._data,
+      furniture: (map.current.getSource('furniture') as mapboxgl.GeoJSONSource)?._data,
+    });
+
+    // Clean up all preview and draw sources
+    ['room-preview', 'furniture-preview', 'mapbox-gl-draw-cold', 'mapbox-gl-draw-hot'].forEach((id) => {
+      try {
+        if (map.current?.getLayer(id)) {
+          map.current.removeLayer(id);
+          console.log(`Removed layer: ${id}`);
+        }
+        if (map.current?.getSource(id)) {
+          map.current.removeSource(id);
+          console.log(`Removed source: ${id}`);
+        }
+      } catch (e) {
+        console.error(`Error removing ${id}:`, e);
+      }
+    });
+
+    // Clean up markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+    console.log('Cleared all markers');
+
+    // Identify related walls and furniture
+    const room = roomFeatures.features.find(r => r.id === roomId);
+    const relatedWalls = wallFeatures.features.filter(f => f.properties?.for === roomId);
+    const relatedFurniture = furnitureFeatures.features.filter(f => {
+      if (!room?.geometry) return false;
+      const centroid = turf.centroid(f).geometry.coordinates as [number, number];
+      return turf.booleanPointInPolygon(centroid, room.geometry as Polygon);
+    });
+
+    console.log('Related features:', {
+      walls: relatedWalls.map(f => ({ id: f.id, geometry: f.geometry })),
+      furniture: relatedFurniture.map(f => ({ id: f.id, geometry: f.geometry, item: f.properties?.item })),
+    });
+
+    // Delete from Supabase
+    if (relatedWalls.length > 0) {
+      const { error } = await supabase
+        .from('features')
+        .delete()
+        .eq('type', 'wall')
+        .in('id', relatedWalls.map(f => f.id));
+      if (error) {
+        console.error('Error deleting walls from Supabase:', error);
+      } else {
+        console.log(`Deleted ${relatedWalls.length} walls from Supabase`);
+      }
+    }
+
+    if (relatedFurniture.length > 0) {
+      const { error } = await supabase
+        .from('features')
+        .delete()
+        .eq('type', 'furniture')
+        .in('id', relatedFurniture.map(f => f.id));
+      if (error) {
+        console.error('Error deleting furniture from Supabase:', error);
+      } else {
+        console.log(`Deleted ${relatedFurniture.length} furniture items from Supabase`);
+      }
+    }
+
+    const { error: roomError } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('id', roomId);
+    if (roomError) {
+      console.error('Error deleting room from Supabase:', roomError);
+    } else {
+      console.log(`Deleted room ${roomId} from Supabase`);
+    }
+
+    // Update state and map sources
+    setWallFeatures(prev => {
+      const newFeatures: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: prev.features.filter(f => !relatedWalls.includes(f))
+      };
+      if (map.current?.getSource('walls') && map.current.isStyleLoaded()) {
+        try {
+          (map.current.getSource('walls') as mapboxgl.GeoJSONSource).setData(newFeatures);
+          console.log('Updated walls source');
+        } catch (e) {
+          console.error('Error updating walls source:', e);
+        }
+      }
+      return newFeatures;
+    });
+
+    setFurnitureFeatures(prev => {
+      const newFeatures: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: prev.features.filter(f => !relatedFurniture.includes(f))
+      };
+      if (map.current?.getSource('furniture') && map.current.isStyleLoaded()) {
+        try {
+          (map.current.getSource('furniture') as mapboxgl.GeoJSONSource).setData(newFeatures);
+          console.log('Updated furniture source');
+        } catch (e) {
+          console.error('Error updating furniture source:', e);
+        }
+      }
+      return newFeatures;
+    });
+
+    setRoomFeatures(prev => {
+      const newFeatures = {
+        type: 'FeatureCollection' as const,
+        features: prev.features.filter(f => f.id !== roomId)
+      };
+      if (map.current?.getSource('rooms') && map.current.isStyleLoaded()) {
+        try {
+          (map.current.getSource('rooms') as mapboxgl.GeoJSONSource).setData(newFeatures);
+          console.log('Updated rooms source');
+        } catch (e) {
+          console.error('Error updating rooms source:', e);
+        }
+      }
+      return newFeatures;
+    });
+
+    // Reset selections
+    setSelectedRoom(null);
+    setSelectedFurniture(null);
+    setSelectedFeatureId(null);
+    console.log('Reset selections');
+
+    // Verify final state
+    console.log('Final state:', {
+      rooms: (map.current.getSource('rooms') as mapboxgl.GeoJSONSource)?._data,
+      walls: (map.current.getSource('walls') as mapboxgl.GeoJSONSource)?._data,
+      furniture: (map.current.getSource('furniture') as mapboxgl.GeoJSONSource)?._data,
+    });
+  },
+  [
+    map,
+    roomFeatures,
+    wallFeatures,
+    furnitureFeatures,
+    setRoomFeatures,
+    setWallFeatures,
+    setFurnitureFeatures,
+    setSelectedRoom,
+    setSelectedFurniture,
+    setSelectedFeatureId,
+  ]
+);
+
 useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -1718,6 +2124,7 @@ useEffect(() => {
                 center: [lng, lat],
                 zoom: typeof zoom === 'number' ? zoom : map.current.getZoom(),
                 essential: true,
+                duration: 3000,
             });
         }
     };
@@ -1746,14 +2153,14 @@ useEffect(() => {
         mapContainer.current?.removeEventListener('drop', handleNativeDrop as unknown as EventListener);
         mapContainer.current?.removeEventListener('dragover', (e) => e.preventDefault());
     };
-}, [handleMapClick, handleFurnitureMouseDown, handleDrawCreate, handleDrawUpdate, handleNativeDrop, mapContainer]);
+}, [handleMapClick, handleFurnitureMouseDown, handleDrawCreate, handleDrawUpdate, handleNativeDrop, mapContainer, isSatellite]);
 
     return {
         mode,
         wallFeatures,
         roomFeatures,
         furnitureFeatures,
-        poiFeatures,
+        // poiFeatures,
         wallWidth,
         selectedFeatureId,
         selectedRoom, // Export selectedRoom
@@ -1766,7 +2173,7 @@ useEffect(() => {
         setWallFeatures,
         setRoomFeatures,
         setFurnitureFeatures,
-        setPoiFeatures,
+        // setPoiFeatures,
         setWallWidth,
         setSelectedFeatureId,
         setSelectedRoom, // Export setSelectedRoom
@@ -1788,6 +2195,9 @@ useEffect(() => {
         updateFurnitureProperties,
         updateRoomProperties,
         initializeMapLayers,
+        deleteRoom,
+        isSatellite,
+        setIsSatellite,
+        MAPBOX_STYLE,
     };
 };
-

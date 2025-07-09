@@ -28,7 +28,8 @@ export default async function EditorLayout({
 
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      {session ? children : <div className="flex h-screen w-full items-center justify-center flex-col">Access Denied: Please log in <button onClick={redirect('/login')}>Log in</button></div>}
+      {/* {session ? children : <div className="flex h-screen w-full items-center justify-center flex-col">Access Denied: Please log in <button onClick={redirect('/login')}>Log in</button></div>} */}
+      {children}
     </div>
   );
 }

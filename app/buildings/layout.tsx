@@ -20,11 +20,11 @@ export default async function EditorLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const { data: { session } } = await supabase.auth.getSession();
+  // const { data: { session } } = await supabase.auth.getSession();
 
-  if (!session) {
-    redirect('/login');
-  }
+  // if (!session) {
+  //   redirect('/login');
+  // }
 
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>

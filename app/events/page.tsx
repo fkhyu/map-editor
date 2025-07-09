@@ -7,9 +7,12 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { Timestamp } from 'next/dist/server/lib/cache-handlers/types';
 import { useParams, useSearchParams } from 'next/navigation';
 import { FeatureCollection } from 'geojson';
+import { useRouter } from 'next/navigation';   
+import { supabase } from '@/lib/supabaseClient';
 
 
-const supabase = createClientComponentClient();
+
+// const supabase = createClientComponentClient();
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
 const generateUniqueId = () => crypto.randomUUID();
@@ -54,6 +57,12 @@ function EventsPageContent() {
     const searchParams = useSearchParams();
     const eventId = searchParams.get('id');
 
+    // for session management
+    const [session, setSession] = useState<any>(null);
+    const router = useRouter();
+    const [user, setUser] = useState<any>(null);
+    const [loadingSession, setLoadingSession] = useState(true);
+
     // For participant management
     const [users, setUsers] = useState<User[]>([]);
     const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -61,6 +70,47 @@ function EventsPageContent() {
     const [showDropdown, setShowDropdown] = useState(false);
     const [selectedParticipants, setSelectedParticipants] = useState<User[]>([]);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        // Get initial session
+        supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+          if (!session || sessionError) {
+            router.push('/login');
+            console.error("Session error:", sessionError, session);
+            return;
+          }
+          
+          setSession(session);
+          
+          // Fetch user data
+          supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+            .then(({ data, error }) => {
+              if (error) {
+                console.error("Error fetching user data:", error);
+                setUser(session.user);
+              } else {
+                setUser(data || session.user);
+                console.log("User data fetched:", data);
+              }
+              setLoadingSession(false);
+            });
+        });
+    
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (!session) {
+            router.push('/login');
+          } else {
+            setSession(session);
+          }
+        });
+    
+        return () => subscription.unsubscribe();
+      }, []);
 
     const handleAddEvent = async (eventData: { name: string, start_time: Timestamp, end_time: Timestamp, description: string, poi_id: string}) => {
         try {
@@ -524,6 +574,14 @@ function EventsPageContent() {
 
     if (error) {
         return <div className="w-full h-[100vh] flex justify-center items-center text-red-500">Error: {error}</div>
+    }
+
+    if (loadingSession) {
+        return <div className="p-4 w-full h-[100vh] flex justify-center items-center">Loading session...</div>;
+    }
+
+    if (!session) {
+        return null;
     }
     
 

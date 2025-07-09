@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import NewBuildingModal from './components/newBuildignModal';
+import { useRouter } from 'next/navigation';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your-mapbox-token-here';
 
@@ -31,6 +32,52 @@ export default function BuildingsPage() {
   const markers = useRef<mapboxgl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // for session management
+  const [session, setSession] = useState<any>(null);
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+      if (!session || sessionError) {
+        router.push('/login');
+        return;
+      }
+      
+      setSession(session);
+      
+      // Fetch user data
+      supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error fetching user data:", error);
+            setUser(session.user);
+          } else {
+            setUser(data || session.user);
+            console.log("User data fetched:", data);
+          }
+          setLoadingSession(false);
+        });
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        router.push('/login');
+      } else {
+        setSession(session);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Handle new building creation
   const handleAddBuilding = async (buildingData: { name: string; address: string; lat: number; lon: number }) => {
@@ -338,6 +385,14 @@ export default function BuildingsPage() {
 
   if (error) {
     return <div className="p-4 w-full h-[100vh] flex justify-center items-center text-red-500">Error: {error}</div>;
+  }
+
+  if (loadingSession) {
+    return <div className="p-4 w-full h-[100vh] flex justify-center items-center">Loading session...</div>;
+  }
+
+  if (!session) {
+    return null;
   }
 
   return (

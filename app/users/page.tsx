@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
+
 
 // Define user type
 interface User {
@@ -13,7 +16,7 @@ interface User {
   age: number | null;
 }
 
-const supabase = createClientComponentClient();
+// const supabase = createClientComponentClient();
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -22,6 +25,53 @@ export default function UsersPage() {
   const [editing, setEditing] = useState(false);
   const [unsavedChanges, setUnsavedChanges] = useState<Partial<User>[]>([]);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+
+  // for session management
+  const [session, setSession] = useState<any>(null);
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+      if (!session || sessionError) {
+        router.push('/login');
+        return;
+      }
+      
+      setSession(session);
+      
+      // Fetch user data
+      supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error fetching user data:", error);
+            setUser(session.user);
+          } else {
+            setUser(data || session.user);
+            console.log("User data fetched:", data);
+          }
+          setLoadingSession(false);
+        });
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        router.push('/login');
+      } else {
+        setSession(session);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Fetch users
   useEffect(() => {
@@ -132,6 +182,19 @@ export default function UsersPage() {
 
   if (error) {
     return <div className="w-full h-[100vh] flex justify-center items-center text-red-500">Error: {error}</div>;
+  }
+
+  if (loadingSession) {
+    return <div className="w-full h-[100vh] flex justify-center items-center">Loading session...</div>;
+  }
+
+  if (!session) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center flex-col text-red-400">
+        Access Denied: Please log in
+        <button onClick={() => router.push('/login')}>Log in</button>
+      </div>
+    );
   }
 
 
